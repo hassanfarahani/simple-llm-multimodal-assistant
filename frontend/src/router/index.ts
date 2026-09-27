@@ -1,4 +1,5 @@
 import ChatbotView from '@/views/ChatbotView.vue'
+import MeetingMinutesView from '@/views/MeetingMinutesView.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -6,8 +7,13 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'home',
+      name: 'ChatBot',
       component: ChatbotView,
+    },
+    {
+      path: '/meeting-minutes',
+      name: 'MeetingMinutes',
+      component: MeetingMinutesView,
     },
   ],
 })

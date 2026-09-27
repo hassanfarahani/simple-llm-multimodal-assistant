@@ -1,6 +1,8 @@
 @import './base.css';
 @import "tailwindcss";
 
+@plugin "@tailwindcss/typography";
+
 #app {
   max-width: 1280px;
   margin: 0 auto;

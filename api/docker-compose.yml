@@ -1,0 +1,17 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+
+    container_name: fastapi-api
+
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - ./main.py:/app/main.py
+
+    restart: unless-stopped
