@@ -15,3 +15,5 @@ https://drive.google.com/file/d/1N_kpSojRR5RYzupz6nqM8hMSoEF_R7pU/view?usp=shari
 original data: the HuggingFace dataset is [here](https://huggingface.co/datasets/huuuyeah/meetingbank) and the audio can be downloaded [here](https://huggingface.co/datasets/huuuyeah/MeetingBank_Audio/tree/main).
 I learned how to use pipeline from Hugging Face Transformers for the open source models. 
 
+![alt text](image.png)
+

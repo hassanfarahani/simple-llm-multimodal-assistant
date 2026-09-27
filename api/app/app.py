@@ -207,7 +207,7 @@ def get_ticket_price(destination_city):
 
 # ***********************************************************************************************
 # Option 1: Use Open Source for Transcription - Hugging Face Pipelines
-# the openai/whisper-small.en model will be stored in .cache/huggingface/hub inside the container
+# the openai/whisper-small.en model will be stored in opt/huggingface/hub inside the container
 # the audio file will be stored in /tmp inside the container (/tmp/tmpj8ph40a9.mp3)
 @app.post('/audio/upload')
 async def upload_audio(file: UploadFile = File(...)):
