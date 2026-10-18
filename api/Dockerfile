@@ -1,4 +1,22 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# --------------------------------------------------
+# Stage 1: Download the Hugging Face models
+# This stage is independent of the application lockfile.
+# --------------------------------------------------
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS models
+
+ENV HF_HOME=/opt/huggingface
+
+RUN uv pip install --system huggingface-hub
+
+RUN python -c "from huggingface_hub import snapshot_download; \
+    snapshot_download('openai/whisper-small.en'); \
+    snapshot_download('Qwen/Qwen2.5-0.5B-Instruct')"
+
+
+# --------------------------------------------------
+# Stage 2: Build the application environment
+# --------------------------------------------------
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS api
 
 WORKDIR /app
 
@@ -7,18 +25,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1
-# Where HF will store the models. Baking this in means zero downloads at runtime.
 ENV HF_HOME=/opt/huggingface
 
 COPY pyproject.toml uv.lock ./
 
 RUN uv sync --frozen --no-dev
 
-# Download models into /opt/huggingface at build time.
-# This layer is cached—rebuilds that only change your app code won't re-download.
-RUN uv run --no-dev python -c "from huggingface_hub import snapshot_download; \
-    snapshot_download('openai/whisper-small.en'); \
-    snapshot_download('Qwen/Qwen2.5-0.5B-Instruct')"
+# Reuse the models downloaded in Stage 1.
+COPY --from=models /opt/huggingface /opt/huggingface
 
 COPY app ./app
 COPY main.py ./

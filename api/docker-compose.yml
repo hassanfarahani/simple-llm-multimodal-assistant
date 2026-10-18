@@ -1,4 +1,32 @@
 services:
+  vectordb:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-embeddings}
+    ports:
+     - 5432:5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./vectordb/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-embeddings}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:latest
+    container_name: adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      vectordb:
+        condition: service_healthy
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -15,3 +43,6 @@ services:
       - ./main.py:/app/main.py
 
     restart: unless-stopped
+
+volumes:
+  pgdata:
