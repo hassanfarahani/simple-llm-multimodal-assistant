@@ -13,9 +13,11 @@ docker compose up
 
 For each new feature that I am learning about llm, I created a route for it in my vue frontend app:
 - http://localhost:5173/
-this page is using tools with LLM
+
+this page is for using tools with LLM
 
 - http://localhost:5173/meeting-minutes
+
 this page is for  added another feature which is Creating meeting minutes from an Audio file. what it does is user upload a mp3 file and then, the new api endpoint (/audio/upload) will first transcribe the audio file uisng the model "openai/whisper-small.en" and then, it will summarize the transcript uisng the model "Qwen/Qwen2.5-0.5B-Instruct". 
 
 I downloaded some Denver City Council meeting minutes and selected a portion of the meeting for us to transcribe. I downloaded it here:  
@@ -28,6 +30,7 @@ I learned how to use pipeline from Hugging Face Transformers for the open source
 
 
 - http://localhost:5173/rag
+
 I generated some fake data about a fake company and put all of it in a directory called "knowledge-base" so after you started the app, you need to run the following command in order to populate the postgres vector database with relevant vectorized data about the company.
 ```bash
 cd api
