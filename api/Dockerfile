@@ -10,7 +10,8 @@ RUN uv pip install --system huggingface-hub
 
 RUN python -c "from huggingface_hub import snapshot_download; \
     snapshot_download('openai/whisper-small.en'); \
-    snapshot_download('Qwen/Qwen2.5-0.5B-Instruct')"
+    snapshot_download('Qwen/Qwen2.5-0.5B-Instruct'); \
+    snapshot_download('sentence-transformers/all-MiniLM-L6-v2')"
 
 
 # --------------------------------------------------

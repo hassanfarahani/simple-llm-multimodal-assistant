@@ -7,3 +7,9 @@ CREATE TABLE documents (
     embedding vector(3072) -- Adjust dimension to match your model
 );
 
+CREATE TABLE IF NOT EXISTS documents_free (
+    id SERIAL PRIMARY KEY,
+    content TEXT NOT NULL,
+    embedding vector(384)   -- all-MiniLM-L6-v2
+);
+

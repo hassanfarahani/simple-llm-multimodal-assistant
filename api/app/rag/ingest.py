@@ -9,22 +9,24 @@ from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 # from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
+import argparse
+from app.services.model_provider import get_profile
 
 load_dotenv()
 
-MODEL = "gpt-4.1-nano"
+# MODEL = "gpt-4.1-nano"
 KNOWLEDGE_BASE = str(Path(__file__).parent.parent.parent / "knowledge-base")  # /home/hassan/courses/LLM/projects/llm-chatbot/api/knowledge-base
 # embeddings = HuggingFaceEmbeddings(model="all-MiniLM-L6-v2") # 413 dimensions
-embeddings = OpenAIEmbeddings(model="text-embedding-3-large") # 3072 dimensions
+# embeddings = OpenAIEmbeddings(model="text-embedding-3-large") # 3072 dimensions
 
 
 
-async def ingest_companies(pool: asyncpg.Pool) -> None:
+async def ingest_companies(pool: asyncpg.Pool, paid: bool = True) -> None:
+    profile = get_profile(paid)
     async with pool.acquire() as conn:
-        documents = fetch_documents()
-        chunks = create_chunks(documents)
-        await create_embeddings(chunks, conn, embeddings)
-        print("Ingestion complete")
+        chunks = create_chunks(fetch_documents())
+        await create_embeddings(chunks, conn, profile.embeddings, profile.table_name)
+        print(f"Ingestion complete → {profile.table_name}")
 
 
 def fetch_documents():
@@ -42,13 +44,13 @@ def fetch_documents():
     return documents
 
 def create_chunks(documents):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=200)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_documents(documents)
     return chunks
 
 
 # https://chat.deepseek.com/a/chat/s/f7663037-497b-4e63-85bf-2e0547b65798 (rewrite the function using posrgresql)
-async def create_embeddings(chunks, conn: asyncpg.Pool, embeddings: OpenAIEmbeddings):
+async def create_embeddingsO(chunks, conn: asyncpg.Pool, embeddings: OpenAIEmbeddings):
     # 1. Extract text content from Document objects
     texts = [chunk.page_content for chunk in chunks]
 
@@ -74,17 +76,31 @@ async def create_embeddings(chunks, conn: asyncpg.Pool, embeddings: OpenAIEmbedd
     )
     print(f"Successfully inserted {len(records)} chunks into the vector store")
 
+async def create_embeddings(chunks, conn, embeddings, table_name: str):
+    texts = [chunk.page_content for chunk in chunks]
+    vectors = await asyncio.to_thread(embeddings.embed_documents, texts)
+    records = [(t, "[" + ",".join(map(str, v)) + "]") for t, v in zip(texts, vectors)]
+
+    await conn.execute(f"TRUNCATE {table_name} RESTART IDENTITY;")
+    await conn.executemany(
+        f"INSERT INTO {table_name} (content, embedding) VALUES ($1, $2::vector)", records
+    )
+    print(f"Inserted {len(records)} chunks into {table_name}")
+
 
 async def main() -> None:
-    settings = get_settings()
-    pool = await asyncpg.create_pool(
-        settings.database_url_host,
-        min_size=1,
-        max_size=10,
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--models", choices=["paid", "free"], default="free")
+    args = parser.parse_args()
+    modes = {"paid": [True], "free": [False]}[args.models]
 
+    settings = get_settings()
+    # asyncpg does not accept the SQLAlchemy "+psycopg" scheme.
+    dsn = settings.database_url_host.replace("postgresql+psycopg://", "postgresql://", 1)
+    pool = await asyncpg.create_pool(dsn, min_size=1, max_size=10)
     try:
-        await ingest_companies(pool)
+        for paid in modes:
+            await ingest_companies(pool, paid)
     finally:
         await pool.close()
 
@@ -92,4 +108,4 @@ async def main() -> None:
 if __name__ == "__main__":
     asyncio.run(main())
 
-# uv run python -m app.rag.ingest
+# uv run python -m app.rag.ingest --models free

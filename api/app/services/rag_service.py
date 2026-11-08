@@ -7,9 +7,10 @@ from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_postgres import PGEngine, PGVectorStore
 from langchain_core.messages import SystemMessage, HumanMessage, convert_to_messages
+from app.services.model_provider import get_profile
 
 MODEL = "gpt-4.1-nano"
-RETRIEVAL_K = 10
+RETRIEVAL_K = 5
 
 SYSTEM_PROMPT = """
 You are a knowledgeable, friendly assistant representing the company Insurellm.
@@ -34,19 +35,41 @@ engine = PGEngine.from_connection_string(
 vectorstore: PGVectorStore | None = None
 retriever = None
 
+_retrievers: dict[bool, object] = {}
+
+
+async def get_retriever(paid: bool):
+    if paid not in _retrievers:
+        profile = get_profile(paid)
+        store = await PGVectorStore.create(
+            engine=engine,
+            table_name=profile.table_name,
+            schema_name="public",
+            id_column="id",
+            content_column="content",
+            embedding_column="embedding",
+            embedding_service=profile.embeddings,
+        )
+        _retrievers[paid] = store.as_retriever(search_kwargs={"k": RETRIEVAL_K})
+    return _retrievers[paid]
+
+# async def init_vectorstore() -> None:
+#     """Call once during app startup."""
+#     global vectorstore, retriever
+#     vectorstore = await PGVectorStore.create(
+#         engine=engine,
+#         table_name="documents",
+#         schema_name="public",
+#         id_column="id",
+#         content_column="content",
+#         embedding_column="embedding",
+#         embedding_service=embeddings,
+#     )
+#     retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVAL_K})
 async def init_vectorstore() -> None:
-    """Call once during app startup."""
-    global vectorstore, retriever
-    vectorstore = await PGVectorStore.create(
-        engine=engine,
-        table_name="documents",
-        schema_name="public",
-        id_column="id",
-        content_column="content",
-        embedding_column="embedding",
-        embedding_service=embeddings,
-    )
-    retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVAL_K})
+    """Startup: warm up the free retriever so the chat page keeps working as before."""
+    global retriever
+    retriever = await get_retriever(False)
 
 
 llm = ChatOpenAI(
@@ -95,6 +118,7 @@ async def process_message(payload: MessageCreate):
 
     # Sends the full conversation to ChatOpenAI (gpt-4.1-nano, temperature=0) and gets back an AIMessage
     response = llm.invoke(messages)
+    # response = await llm.ainvoke(messages)
     return response.content
 
 def combined_question(history: list[dict] = []) -> str:
@@ -116,6 +140,20 @@ def fetch_context(question: str) -> list[Document]:
     Retrieve relevant context documents from PostgreSQL + pgvector.
     """
     return retriever.invoke(question)
+
+async def afetch_context(question: str, paid: bool) -> list[Document]:
+    return await (await get_retriever(paid)).ainvoke(question)
+
+
+async def answer_question(question: str, paid: bool) -> tuple[str, list[Document]]:
+    docs = await afetch_context(question, paid)
+    context = "\n\n".join(d.page_content for d in docs)
+    messages = [
+        SystemMessage(content=SYSTEM_PROMPT.format(context=context)),
+        HumanMessage(content=question),
+    ]
+    response = await get_profile(paid).chat_llm.ainvoke(messages)
+    return response.content, docs
 
 
 

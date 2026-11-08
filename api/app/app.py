@@ -11,6 +11,7 @@ import asyncpg
 from app.routers import messages
 from app.routers import meetingminutes
 from app.routers import rag
+from app.routers import rag_eval
 from app.config import get_settings
 from app.services.rag_service import init_vectorstore
 
@@ -94,6 +95,8 @@ app.include_router(meetingminutes.router)
 
 # ***********************************************************************************************
 app.include_router(rag.router)
+
+app.include_router(rag_eval.router)
 
 
 # still need to refactor using the folder structure pattern in:

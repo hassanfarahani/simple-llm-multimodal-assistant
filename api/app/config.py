@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     hf_token: str
     database_url: str
     database_url_host: str
+    use_paid_models: bool = False                       # ← the switch
+    ollama_base_url: str = "http://host.docker.internal:11434"
 
 
 @lru_cache

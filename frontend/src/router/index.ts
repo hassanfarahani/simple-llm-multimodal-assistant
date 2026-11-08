@@ -1,6 +1,7 @@
 import ChatbotView from '@/views/ChatbotView.vue'
 import MeetingMinutesView from '@/views/MeetingMinutesView.vue'
 import RagChatbotView from '@/views/RagChatbotView.vue'
+import RagEvalView from '@/views/RagEvalView.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -21,6 +22,11 @@ const router = createRouter({
       name: 'Rag',
       component: RagChatbotView,
     },
+    {
+      path: '/rag-eval',
+      name: 'RagEval',
+      component: RagEvalView,
+    }, 
   ],
 })
 

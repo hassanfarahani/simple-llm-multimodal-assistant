@@ -110,10 +110,8 @@ async function upload() {
       xhr.onerror = () => reject(new Error('Network error'))
       xhr.send(formData)
     })
-    console.log('response ........', response)
 
     result.value = response.summary
-    console.log('response ........', result.value)
     successMsg.value = 'Audio uploaded successfully!'
     emit('uploaded', response)
   } catch (err: any) {

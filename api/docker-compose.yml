@@ -38,6 +38,8 @@ services:
 
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach Ollama on the host
     volumes:
       - ./app:/app/app
       - ./main.py:/app/main.py
@@ -46,3 +48,6 @@ services:
 
 volumes:
   pgdata:
+
+
+# After each rebuild, run docker image prune -f. Every --build leaves the previous ~11 GB api-api image dangling
