@@ -33,7 +33,7 @@ http://localhost:5173/
 
 ### 2. Choose Between Paid and Free Models
 
-The application supports two model configurations. You can switch between them by setting the `USE_PAID_MODELS` environment variable.
+The application supports two model configurations. Switch between them using the `USE_PAID_MODELS` environment variable.
 
 **Paid models — OpenAI**
 
@@ -58,15 +58,82 @@ This configuration uses:
 
 - **Chat model:** `qwen2.5:3b`, running locally through Ollama
 - **Embedding model:** `sentence-transformers/all-MiniLM-L6-v2`
-- **Concurrency:** Up to 2 evaluation tests at a time, to limit resource usage on a CPU-only machine
+- **Concurrency:** Up to 2 evaluation tests at a time to limit resource usage on a CPU-only machine
 
-To use the free configuration, install Ollama on your machine and download the required model:
+#### Install and configure Ollama
+
+To use the free configuration, install [Ollama](https://ollama.com/) on your host machine and download the required model:
 
 ```bash
 ollama pull qwen2.5:3b
 ```
 
-Make sure the Ollama service is running and that the FastAPI container can reach it. The Ollama base URL should be configured appropriately for your Docker environment.
+Make sure the Ollama service is running:
+
+```bash
+sudo systemctl status ollama
+```
+
+By default, Ollama may listen only on the loopback interface (`127.0.0.1`). A Docker container cannot use its own `localhost` to reach a service running on the host machine. Therefore, Ollama must be configured to listen on an address that the container can reach.
+
+**Step 1: Configure the Ollama systemd service**
+
+Open the Ollama service configuration:
+
+```bash
+sudo systemctl edit ollama
+```
+
+Add the following override:
+
+```ini
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+```
+
+Save and close the editor.
+
+This setting tells Ollama to listen on all network interfaces on port `11434`, rather than only on the host's loopback interface.
+
+**Step 2: Reload systemd and restart Ollama**
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+```
+
+Verify that the service is running:
+
+```bash
+sudo systemctl status ollama
+```
+
+You can also verify that Ollama is responding on the host:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+**Step 3: Configure the FastAPI container to reach the host**
+
+The FastAPI container must use a host-reachable address as its Ollama base URL. For example, on a typical Linux Docker Compose setup, you can configure the service as follows:
+
+```yaml
+services:
+  api:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+```
+
+Replace `api` with your actual FastAPI service name if it differs.
+
+Ensure your application settings read `OLLAMA_BASE_URL` into `settings.ollama_base_url`, which is used by the model configuration.
+
+The exact configuration can vary depending on your Docker networking setup.
+
+**Important security note:** `0.0.0.0` makes Ollama listen on all available network interfaces. Restrict access to port `11434` with your firewall so that only trusted systems can connect. Do not expose the Ollama API directly to the public internet.
 
 The embedding model `sentence-transformers/all-MiniLM-L6-v2` is downloaded during the Docker image build, so it can be loaded locally without calling a paid embedding API.
 
@@ -120,7 +187,7 @@ Before using the RAG feature, populate the PostgreSQL vector database with the r
 
 ```bash
 cd api
-uv run python -m app.rag.ingest
+uv run python -m app.rag.ingest --models free
 ```
 
 The ingestion process prepares the documents, splits them into chunks, generates embeddings, and stores the resulting vectors in PostgreSQL using pgvector.
@@ -134,7 +201,7 @@ When a user submits a question, the application:
 
 This feature demonstrates how chunking strategies, embedding models, vector search, and prompt construction affect the accuracy, completeness, and relevance of generated answers.
 
-**Important:** Run ingestion with the same model configuration used for retrieval. If you switch between paid and free models, populate the corresponding vector database table before evaluating or querying that configuration.
+**Important:** Run ingestion with the same embedding configuration used for retrieval. If you switch between paid and free models, populate the corresponding vector database table before evaluating or querying that configuration.
 
 ### 4. RAG Evaluation
 
@@ -164,13 +231,13 @@ Answer evaluation measures the quality of the generated answers against the expe
 - **Completeness:** Measures whether the answer covers the important information required to answer the question.
 - **Relevance:** Measures how well the answer addresses the user's question.
 
-An LLM judge grades the generated answers using the evaluation criteria. The dashboard displays the average scores and breaks them down by question category to help identify weaknesses in the system.
+An LLM judge grades the generated answers using the evaluation criteria. The dashboard displays average scores and breaks them down by question category to help identify weaknesses in the system.
 
 #### Evaluation Results
 
 The following screenshot shows an example of the evaluation dashboard after running 150 tests.
 
-![RAG retrieval and answer evaluation dashboard](images/rag-eval.png)
+![alt text](image-3.png)
 
 The dashboard makes it easier to identify areas for improvement, compare model configurations, and evaluate the impact of changes to the retrieval pipeline.
 
@@ -186,6 +253,7 @@ Through this project, I have been exploring:
 - How to use tools and extend LLM capabilities.
 - How to run open-source models locally with Ollama and Hugging Face.
 - How to switch between paid API-based models and locally hosted models.
+- How to configure a host-based Ollama service for access from a Dockerized application.
 - How to generate embeddings and store them in a PostgreSQL vector database.
 - How to implement RAG using document chunking, vector retrieval, and prompt construction.
 - How to process audio files using speech-to-text models and generate meeting summaries.
