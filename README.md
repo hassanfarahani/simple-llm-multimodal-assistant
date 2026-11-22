@@ -302,7 +302,7 @@ Both runs below used the free configuration and the full set of 150 tests.
 - Retrieval: query rewriting, 2 × 20 chunks, LLM reranking, top 10 chunks
 - Chat model and judge: `qwen2.5:7b` (`num_ctx` 8192 for answering and reranking)
 
-![Agentic RAG evaluation results](image-4.png)
+![alt text](image-4.png)
 
 **Comparison**
 
