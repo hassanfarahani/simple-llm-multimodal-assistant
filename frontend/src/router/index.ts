@@ -1,3 +1,4 @@
+import AgenticRagChatbotView from '@/views/AgenticRagChatbotView.vue'
 import ChatbotView from '@/views/ChatbotView.vue'
 import MeetingMinutesView from '@/views/MeetingMinutesView.vue'
 import RagChatbotView from '@/views/RagChatbotView.vue'
@@ -21,6 +22,11 @@ const router = createRouter({
       path: '/rag',
       name: 'Rag',
       component: RagChatbotView,
+    },
+    {
+      path: '/agentic-rag',
+      name: 'AgenticRag',
+      component: AgenticRagChatbotView,
     },
     {
       path: '/rag-eval',

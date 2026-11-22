@@ -14,7 +14,7 @@ from app.services.model_provider import get_profile
 
 load_dotenv()
 
-# MODEL = "gpt-4.1-nano"
+# MODEL = "gpt-5.4-nano"
 KNOWLEDGE_BASE = str(Path(__file__).parent.parent.parent / "knowledge-base")  # /home/hassan/courses/LLM/projects/llm-chatbot/api/knowledge-base
 # embeddings = HuggingFaceEmbeddings(model="all-MiniLM-L6-v2") # 413 dimensions
 # embeddings = OpenAIEmbeddings(model="text-embedding-3-large") # 3072 dimensions

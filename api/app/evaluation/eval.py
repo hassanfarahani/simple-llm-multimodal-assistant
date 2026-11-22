@@ -5,9 +5,35 @@ from collections import defaultdict
 from pydantic import BaseModel, Field
 
 from app.evaluation.test import TestQuestion, load_tests
-from app.services.model_provider import get_profile
-from app.services.rag_service import afetch_context, answer_question
+from typing import Literal
 
+import asyncpg
+
+from app.services.model_provider import get_profile
+from app.services import rag_service, agentic_rag_service
+
+# "simple"  = rag_service.py          (LangChain retriever, top 5)
+# "agentic" = agentic_rag_service.py  (rewrite + 2 retrievals + LLM rerank, top 10)
+Pipeline = Literal["simple", "agentic"]
+
+
+# ---- one interface for both pipelines ----
+# The two services have different signatures, so these helpers hide the difference.
+# Each test question is asked on its own, so the agentic pipeline gets an empty history.
+
+
+async def fetch_context(question: str, paid: bool, pipeline: Pipeline, pool: asyncpg.Pool | None) -> list:
+    if pipeline == "agentic":
+        return await agentic_rag_service.afetch_context(question, [], paid, pool)
+    return await rag_service.afetch_context(question, paid)
+
+
+async def generate_answer(question: str, paid: bool, pipeline: Pipeline, pool: asyncpg.Pool | None) -> str:
+    if pipeline == "agentic":
+        chunks = await agentic_rag_service.afetch_context(question, [], paid, pool)
+        return await agentic_rag_service.answer_question(question, [], chunks, paid)
+    answer, _docs = await rag_service.answer_question(question, paid)
+    return answer
 
 class RetrievalEval(BaseModel):
     """Evaluation metrics for retrieval performance."""
@@ -70,8 +96,9 @@ def calculate_ndcg(keyword: str, retrieved_docs: list, k: int = 10) -> float:
 # ---- per-test evaluation ----
 
 
-async def evaluate_retrieval(test: TestQuestion, paid: bool, k: int = 10) -> RetrievalEval:
-    retrieved_docs = await afetch_context(test.question, paid)
+async def evaluate_retrieval(test: TestQuestion, paid: bool, pipeline: Pipeline,
+                             pool: asyncpg.Pool | None, k: int = 10) -> RetrievalEval:
+    retrieved_docs = await fetch_context(test.question, paid, pipeline, pool)
     mrr_scores = [calculate_mrr(kw, retrieved_docs) for kw in test.keywords]
     ndcg_scores = [calculate_ndcg(kw, retrieved_docs, k) for kw in test.keywords]
     found = sum(1 for s in mrr_scores if s > 0)
@@ -115,8 +142,9 @@ Provide detailed feedback and scores from 1 (very poor) to 5 (ideal) for each di
     ]
 
 
-async def evaluate_answer(test: TestQuestion, paid: bool) -> AnswerEval:
-    generated_answer, _ = await answer_question(test.question, paid)
+async def evaluate_answer(test: TestQuestion, paid: bool, pipeline: Pipeline,
+                          pool: asyncpg.Pool | None) -> AnswerEval:
+    generated_answer = await generate_answer(test.question, paid, pipeline, pool)
     judge = get_profile(paid).judge_llm.with_structured_output(AnswerEval)
     return await judge.ainvoke(build_judge_messages(test, generated_answer))
 
@@ -157,13 +185,14 @@ def _split_ok(tests, results):
     return ok_tests, ok
 
 
-async def run_retrieval_evaluation(paid: bool, limit: int | None = None) -> dict:
+async def run_retrieval_evaluation(paid: bool, limit: int | None = None,
+                             pipeline: Pipeline = "simple", pool: asyncpg.Pool | None = None) -> dict:
     profile = get_profile(paid)
     tests = load_tests()[:limit]  # [:None] == all tests
-    results = await _run_all(tests, lambda t: evaluate_retrieval(t, paid), profile.max_concurrency)
+    results = await _run_all(tests, lambda t: evaluate_retrieval(t, paid, pipeline, pool), profile.max_concurrency)
     ok_tests, ok = _split_ok(tests, results)
     return {
-        "profile": profile.name,
+        "profile": f"{profile.name} / {pipeline}",
         "count": len(ok),
         "failed": len(tests) - len(ok),
         "mrr": _mean([r.mrr for r in ok]),
@@ -173,13 +202,14 @@ async def run_retrieval_evaluation(paid: bool, limit: int | None = None) -> dict
     }
 
 
-async def run_answer_evaluation(paid: bool, limit: int | None = None) -> dict:
+async def run_answer_evaluation(paid: bool, limit: int | None = None,
+                             pipeline: Pipeline = "simple", pool: asyncpg.Pool | None = None) -> dict:
     profile = get_profile(paid)
     tests = load_tests()[:limit]
-    results = await _run_all(tests, lambda t: evaluate_answer(t, paid), profile.max_concurrency)
+    results = await _run_all(tests, lambda t: evaluate_answer(t, paid, pipeline, pool), profile.max_concurrency)
     ok_tests, ok = _split_ok(tests, results)
     return {
-        "profile": profile.name,
+        "profile": f"{profile.name} / {pipeline}",
         "count": len(ok),
         "failed": len(tests) - len(ok),
         "accuracy": _mean([r.accuracy for r in ok]),

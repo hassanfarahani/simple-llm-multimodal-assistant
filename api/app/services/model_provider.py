@@ -11,7 +11,7 @@ from app.config import get_settings
 
 settings = get_settings()
 
-FREE_LLM = "qwen2.5:3b"  # this model has been already pulled using ollama service on my machine
+FREE_LLM = "qwen2.5:7b"  # this model has been already pulled using ollama service on my machine
 FREE_EMBEDDINGS = "sentence-transformers/all-MiniLM-L6-v2" # This model has been already pulled in Dockerfile so we can propagate the vector db
 
 
@@ -31,16 +31,20 @@ def get_profile(paid: bool) -> ModelProfile:
         return ModelProfile(
             name="openai",
             embeddings=OpenAIEmbeddings(model="text-embedding-3-large"),
-            chat_llm=ChatOpenAI(model="gpt-4.1-nano", temperature=0),
-            judge_llm=ChatOpenAI(model="gpt-4.1-nano"),
+            chat_llm=ChatOpenAI(model="gpt-5.4-nano", temperature=0),
+            judge_llm=ChatOpenAI(model="gpt-5.4-nano"),
             table_name="documents",
             max_concurrency=8,
         )
     return ModelProfile(
         name="free (ollama + minilm)",
         embeddings=HuggingFaceEmbeddings(model_name=FREE_EMBEDDINGS),
-        chat_llm=ChatOllama(model=FREE_LLM, base_url=settings.ollama_base_url, temperature=0, num_ctx=4096),
+        chat_llm=ChatOllama(model=FREE_LLM, base_url=settings.ollama_base_url, temperature=0, num_ctx=8192),
         judge_llm=ChatOllama(model=FREE_LLM, base_url=settings.ollama_base_url, temperature=0, num_ctx=4096),
         table_name="documents_free",
         max_concurrency=2,     # CPU-only Ollama can't do much in parallel
     )
+
+
+
+# A simple rule of thumb: if it’s an LLM that you chat with, or something several services share, serve it with Ollama and call it through litellm. If it’s a small, specialized model (embeddings, speech, classification) used by one program, load it in-process.

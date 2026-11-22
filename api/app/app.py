@@ -11,6 +11,7 @@ import asyncpg
 from app.routers import messages
 from app.routers import meetingminutes
 from app.routers import rag
+from app.routers import agentic_rag
 from app.routers import rag_eval
 from app.config import get_settings
 from app.services.rag_service import init_vectorstore
@@ -95,6 +96,8 @@ app.include_router(meetingminutes.router)
 
 # ***********************************************************************************************
 app.include_router(rag.router)
+
+app.include_router(agentic_rag.router)
 
 app.include_router(rag_eval.router)
 

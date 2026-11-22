@@ -5,12 +5,16 @@ import type { AnswerSummary, CategoryScore, Level, MetricCard, RetrievalSummary 
 
 const API_URL = 'http://localhost:8000/rag-eval'
 
+// which RAG pipeline to evaluate: rag_service.py ("simple") or agentic_rag_service.py ("agentic")
+type Pipeline = 'simple' | 'agentic'
+const pipeline = ref<Pipeline>('simple')
+
 // same thresholds as evaluator.py
 const level = (v: number, green: number, amber: number): Level =>
   v >= green ? 'good' : v >= amber ? 'warn' : 'bad'
 
 async function postJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { method: 'POST' })
+  const res = await fetch(`${API_URL}${path}?pipeline=${pipeline.value}`, { method: 'POST' })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail ?? `Request failed (${res.status})`)
@@ -92,7 +96,19 @@ const answerCards = computed<MetricCard[]>(() => {
 <template>
   <div class="mx-auto max-w-6xl px-4">
     <h1 class="text-2xl font-bold">📊 RAG Evaluation Dashboard</h1>
-    <p class="mb-6 text-gray-500">Evaluate retrieval and answer quality for the Insurellm RAG system</p>
+    <p class="mb-4 text-gray-500">Evaluate retrieval and answer quality for the Insurellm RAG system</p>
+
+    <label class="mb-6 flex items-center gap-2 text-sm">
+      <span class="font-medium">Pipeline:</span>
+      <select
+        v-model="pipeline"
+        :disabled="retrievalLoading || answerLoading"
+        class="rounded-md border border-gray-300 bg-white px-2 py-1 dark:border-surface-600 dark:bg-surface-800"
+      >
+        <option value="simple">Simple RAG (rag_service)</option>
+        <option value="agentic">Agentic RAG (rewrite + rerank)</option>
+      </select>
+    </label>
 
     <EvalSection
       title="🔍 Retrieval Evaluation"

@@ -9,8 +9,8 @@ from langchain_postgres import PGEngine, PGVectorStore
 from langchain_core.messages import SystemMessage, HumanMessage, convert_to_messages
 from app.services.model_provider import get_profile
 
-MODEL = "gpt-4.1-nano"
-RETRIEVAL_K = 5
+MODEL = "gpt-5.4-nano"
+RETRIEVAL_K = 10
 
 SYSTEM_PROMPT = """
 You are a knowledgeable, friendly assistant representing the company Insurellm.
@@ -116,7 +116,7 @@ async def process_message(payload: MessageCreate):
     # ]
     messages.append(HumanMessage(content=question))
 
-    # Sends the full conversation to ChatOpenAI (gpt-4.1-nano, temperature=0) and gets back an AIMessage
+    # Sends the full conversation to ChatOpenAI (gpt-5.4-nano, temperature=0) and gets back an AIMessage
     response = llm.invoke(messages)
     # response = await llm.ainvoke(messages)
     return response.content

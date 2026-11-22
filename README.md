@@ -10,7 +10,7 @@ The application provides a simple environment for experimenting with different L
 - **Embeddings:** OpenAI Embeddings and Hugging Face Sentence Transformers
 - **Frontend:** Vue 3
 - **Backend:** FastAPI
-- **LLM Framework:** LangChain
+- **LLM Frameworks:** LangChain (simple RAG) and LiteLLM (agentic RAG, no LangChain)
 - **Open-Source Models:** Qwen2.5 and Whisper
 - **Vector Database:** PostgreSQL with pgvector
 - **Containerization:** Docker and Docker Compose
@@ -44,7 +44,7 @@ OPENAI_API_KEY=your_openai_api_key
 
 This configuration uses:
 
-- **Chat model:** `gpt-4.1-nano`
+- **Chat model:** `gpt-5.4-nano`
 - **Embedding model:** `text-embedding-3-large`
 - **Concurrency:** Up to 8 evaluation tests at a time
 
@@ -56,7 +56,7 @@ USE_PAID_MODELS=false
 
 This configuration uses:
 
-- **Chat model:** `qwen2.5:3b`, running locally through Ollama
+- **Chat model:** `qwen2.5:7b`, running locally through Ollama
 - **Embedding model:** `sentence-transformers/all-MiniLM-L6-v2`
 - **Concurrency:** Up to 2 evaluation tests at a time to limit resource usage on a CPU-only machine
 
@@ -65,7 +65,7 @@ This configuration uses:
 To use the free configuration, install [Ollama](https://ollama.com/) on your host machine and download the required model:
 
 ```bash
-ollama pull qwen2.5:3b
+ollama pull qwen2.5:7b
 ```
 
 Make sure the Ollama service is running:
@@ -203,7 +203,48 @@ This feature demonstrates how chunking strategies, embedding models, vector sear
 
 **Important:** Run ingestion with the same embedding configuration used for retrieval. If you switch between paid and free models, populate the corresponding vector database table before evaluating or querying that configuration.
 
-### 4. RAG Evaluation
+### 4. Agentic RAG (LLM Chunking, Query Rewriting and Reranking)
+
+**Frontend route:** [http://localhost:5173/agentic-rag](http://localhost:5173/agentic-rag)
+
+**API endpoint:** `POST /agentic-rag-messages?paid=false` (`?paid=true` for OpenAI, omit it to use `USE_PAID_MODELS`)
+
+This is an improved version of the simple RAG pipeline above. It does not use LangChain: the LLM calls go through [LiteLLM](https://docs.litellm.ai/) (`app/services/llm_provider.py`) and the vector search is a plain pgvector SQL query (`app/services/agentic_rag_service.py`). The paid or free model can be chosen per request.
+
+The improvements happen in two places.
+
+**1. At ingestion — LLM chunking**
+
+Instead of cutting each document into fixed 1000-character pieces, an LLM splits every document into meaningful chunks and gives each one a headline and a short summary, for example:
+
+```text
+Maxine Thompson - Career Progression (2/2)
+
+This chunk continues Maxine's career progression from January 2021 to the present ...
+```
+
+Because the headline carries information that a fixed-size chunk would lose (such as the person's full name), retrieval finds the right chunk much more often.
+
+```bash
+cd api
+uv run python -m app.rag.ingest-no-langchain --models free              # LLM chunking (slow)
+uv run python -m app.rag.ingest-no-langchain --models free --chunking simple   # fixed-size chunks (fast)
+```
+
+**Note:** Ingestion replaces the contents of the table (`documents_free` or `documents`), so both RAG pipelines then search the newly ingested chunks.
+
+**2. At query time — query rewriting and reranking**
+
+When a user submits a question, the application:
+
+1. **Rewrites the question** with the LLM, using the conversation history to resolve references. For example, *"What is her current role?"* becomes *"What is Maxine Thompson's current role?"*.
+2. **Retrieves 20 chunks** for the original question and 20 chunks for the rewritten question, then merges them and removes duplicates.
+3. **Reranks the chunks** with the LLM, which orders them by relevance to the question.
+4. **Answers the question** using the top 10 reranked chunks as context and the same system prompt as the simple RAG.
+
+When using Ollama, the rerank and answer steps run with a context window (`num_ctx`) of 8192 tokens. With a smaller window, Ollama silently cuts off the start of a long prompt (the instructions and the retrieved context).
+
+### 5. RAG Evaluation
 
 **Frontend route:** [http://localhost:5173/rag-eval](http://localhost:5173/rag-eval)
 
@@ -233,11 +274,53 @@ Answer evaluation measures the quality of the generated answers against the expe
 
 An LLM judge grades the generated answers using the evaluation criteria. The dashboard displays average scores and breaks them down by question category to help identify weaknesses in the system.
 
+A **Pipeline** selector at the top of the dashboard chooses which RAG implementation to evaluate. The API takes the same option as a query parameter:
+
+```bash
+curl -X POST "http://localhost:8000/rag-eval/retrieval?pipeline=agentic&paid=false"
+curl -X POST "http://localhost:8000/rag-eval/answer?pipeline=agentic&paid=false&limit=10"
+```
+
+- `pipeline=simple` (default): the LangChain RAG from section 3
+- `pipeline=agentic`: the agentic RAG from section 4
+
 #### Evaluation Results
 
-The following screenshot shows an example of the evaluation dashboard after running 150 tests.
+Both runs below used the free configuration and the full set of 150 tests.
 
-![alt text](image-3.png)
+**Run 1: Simple RAG**
+
+- Chunking: fixed-size chunks of 1000 characters
+- Retrieval: top 5 chunks by vector similarity
+- Chat model and judge: `qwen2.5:3b` (`num_ctx` 4096)
+
+![Simple RAG evaluation results](image-3.png)
+
+**Run 2: Agentic RAG**
+
+- Chunking: LLM chunking with a headline and summary for each chunk
+- Retrieval: query rewriting, 2 × 20 chunks, LLM reranking, top 10 chunks
+- Chat model and judge: `qwen2.5:7b` (`num_ctx` 8192 for answering and reranking)
+
+![Agentic RAG evaluation results](image-4.png)
+
+**Comparison**
+
+| Metric | Simple RAG | Agentic RAG | Change |
+|---|---|---|---|
+| Mean Reciprocal Rank (MRR) | 0.7298 | **0.8523** | +0.12 |
+| Normalized DCG (nDCG) | 0.7387 | **0.8359** | +0.10 |
+| Keyword Coverage | 83.8% | **92.6%** | +8.8 points |
+| Accuracy | 3.41/5 | **4.11/5** | +0.70 |
+| Completeness | 3.35/5 | **3.88/5** | +0.53 |
+| Relevance | 3.71/5 | **4.14/5** | +0.43 |
+
+Every metric improved. A few observations:
+
+- **LLM chunking made the biggest difference.** The two runs differ in chunking, in the query-time steps, and in the model. Of these, the better chunks contributed most of the improvement in keyword coverage and answer quality.
+- **Reranking mainly improves ranking.** Query rewriting and reranking raised MRR and nDCG further, because the most relevant chunk moves to the top. Keyword coverage barely changed, because 10 LLM-made chunks already contained most keywords.
+- **Query rewriting has little effect in this evaluation.** Each test question is asked without conversation history, so there are no references (like "her" or "it") to resolve. Rewriting matters more in a real multi-turn chat.
+- **The answer scores are not a strict comparison.** The judge model also changed from `qwen2.5:3b` to `qwen2.5:7b`, and a small local model is a noisy judge. Differences of about ±0.1 are within the normal variation between runs.
 
 The dashboard makes it easier to identify areas for improvement, compare model configurations, and evaluate the impact of changes to the retrieval pipeline.
 
@@ -256,6 +339,8 @@ Through this project, I have been exploring:
 - How to configure a host-based Ollama service for access from a Dockerized application.
 - How to generate embeddings and store them in a PostgreSQL vector database.
 - How to implement RAG using document chunking, vector retrieval, and prompt construction.
+- How to improve RAG with LLM chunking, query rewriting, and LLM reranking.
+- How to call paid and local models through one interface with LiteLLM.
 - How to process audio files using speech-to-text models and generate meeting summaries.
 - How to evaluate retrieval quality using MRR, nDCG, and keyword coverage.
 - How to evaluate answer accuracy, completeness, and relevance using an LLM judge.
